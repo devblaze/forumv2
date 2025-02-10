@@ -37,7 +37,7 @@ class CommentController extends Controller
             'content' => $request->input('content'),
             'user_id' => auth()->id(),
         ]);
-        
+
         if ($post->user && $post->user->id !== auth()->id()) {
             $post->user->notify(new NewComment($post));
         }
