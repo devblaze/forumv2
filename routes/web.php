@@ -21,11 +21,8 @@ Route::middleware('auth')->group(function () {
 
 Route::middleware(['auth', 'verified'])->group(function () {
     Route::resource('posts', PostController::class);
-    Route::post('posts/{posts}/comments', [CommentController::class, 'store']);
+    Route::resource('posts.comments', CommentController::class);
 });
-
-Route::get('posts', [PostController::class, 'index'])->name('posts.index');
-Route::get('posts/{post}', [PostController::class, 'show'])->name('posts.show');
 
 /* --------------------------------------------------------- */
 /* ---------------------- API ROUTES ----------------------- */

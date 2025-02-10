@@ -4,6 +4,7 @@ namespace App\Http\Controllers;
 
 use App\Models\Comment;
 use App\Models\Post;
+use Illuminate\Auth\Access\AuthorizationException;
 use Illuminate\Http\Request;
 
 class CommentController extends Controller
@@ -42,25 +43,22 @@ class CommentController extends Controller
         return redirect()->route('posts.show', $comment->post_id)->with('success', 'Comment updated successfully.');
     }
 
-
     public function store(Request $request, Post $post): \Illuminate\Http\RedirectResponse
     {
-        $request->validate([
-            'text' => 'required|string',
-        ]);
-
-        if (!auth()->user()->hasVerifiedEmail()) {
-            return redirect()->back()->with('error', 'You must verify your email to add a comment.');
+        if (!auth()->user() || !auth()->user()->hasVerifiedEmail()) {
+            throw new AuthorizationException('You must verify your email to add a comment.');
         }
 
+        $request->validate([
+            'content' => 'required|string|min:3|max:500'
+        ]);
+
         $post->comments()->create([
-            'text' => $request->text,
+            'content' => $request->input('content'),
             'user_id' => auth()->id(),
         ]);
 
-        $post->user->notify(new \App\Notifications\NewComment($post));
-
-        return redirect()->route('posts.show', $post->id)->with('success', 'Comment added successfully.');
+        return redirect()->route('posts.show', $post)->with('success', 'Comment added successfully.');
     }
 
     public function destroy(Comment $comment): \Illuminate\Http\RedirectResponse

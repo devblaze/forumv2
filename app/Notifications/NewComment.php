@@ -1,52 +1,34 @@
 <?php
-
 namespace App\Notifications;
 
 use Illuminate\Bus\Queueable;
-use Illuminate\Notifications\Messages\MailMessage;
 use Illuminate\Notifications\Notification;
+use Illuminate\Contracts\Queue\ShouldQueue;
+use Illuminate\Notifications\Messages\MailMessage;
 
-class NewComment extends Notification
+class NewComment extends Notification implements ShouldQueue
 {
     use Queueable;
 
-    /**
-     * Create a new notification instance.
-     */
-    public function __construct()
+    public $post;
+
+    public function __construct($post)
     {
-        //
+        $this->post = $post;
     }
 
-    /**
-     * Get the notification's delivery channels.
-     *
-     * @return array<int, string>
-     */
-    public function via(object $notifiable): array
+    public function via($notifiable)
     {
         return ['mail'];
     }
 
-    /**
-     * Get the mail representation of the notification.
-     */
     public function toMail($notifiable)
     {
         return (new MailMessage)
-            ->line("A new comment was added to your post: '{$this->post->title}'")
-            ->action('View Post', route('posts.show', $this->post->id));
-    }
-
-    /**
-     * Get the array representation of the notification.
-     *
-     * @return array<string, mixed>
-     */
-    public function toArray(object $notifiable): array
-    {
-        return [
-            //
-        ];
+            ->subject('New Comment on Your Post')
+            ->greeting('Hello!')
+            ->line('A new comment was added to your post: ' . $this->post->title)
+            ->action('View Post', url('/posts/' . $this->post->id))
+            ->line('Thank you for using our forum!');
     }
 }
