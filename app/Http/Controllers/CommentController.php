@@ -4,6 +4,7 @@ namespace App\Http\Controllers;
 
 use App\Models\Comment;
 use App\Models\Post;
+use App\Notifications\NewComment;
 use Illuminate\Auth\Access\AuthorizationException;
 use Illuminate\Http\Request;
 
@@ -20,54 +21,62 @@ class CommentController extends Controller
         ]);
     }
 
-    public function edit(Comment $comment): \Illuminate\Contracts\View\View
+    public function show(Comment $comment)
     {
-        $this->authorize('update', $comment);
-
-        return view('comments.edit', compact('comment'));
-    }
-
-    public function update(Request $request, Comment $comment): \Illuminate\Http\RedirectResponse
-    {
-        $this->authorize('update', $comment);
-
-        $request->validate([
-            'text' => 'required|string',
-        ]);
-
-        $comment->update([
-            'text' => $request->text,
-            'edited_at' => now(),
-        ]);
-
-        return redirect()->route('posts.show', $comment->post_id)->with('success', 'Comment updated successfully.');
+        return response()->json($comment);
+//        return view('comments.show', compact('comment'));
     }
 
     public function store(Request $request, Post $post): \Illuminate\Http\RedirectResponse
     {
-        if (!auth()->user() || !auth()->user()->hasVerifiedEmail()) {
-            throw new AuthorizationException('You must verify your email to add a comment.');
-        }
-
         $request->validate([
             'content' => 'required|string|min:3|max:500'
         ]);
 
-        $post->comments()->create([
+        $comment = $post->comments()->create([
             'content' => $request->input('content'),
             'user_id' => auth()->id(),
         ]);
+        
+        if ($post->user && $post->user->id !== auth()->id()) {
+            $post->user->notify(new NewComment($post));
+        }
 
         return redirect()->route('posts.show', $post)->with('success', 'Comment added successfully.');
     }
 
-    public function destroy(Comment $comment): \Illuminate\Http\RedirectResponse
+    public function edit($post_id, Comment $comment)
     {
-        $this->authorize('delete', $comment);
+        $this->authorize('update', $comment);
+        return view('comments.edit', compact('comment'));
+    }
+
+    public function update(Request $request, $post_id, Comment $comment)
+    {
+        if (auth()->id() !== $comment->user_id) {
+            return redirect()->route('posts.show', $post_id)->with('error', 'You are not authorized to update this comment.');
+        }
+
+        $request->validate([
+            'content' => 'required|string|max:500',
+        ]);
+
+        $comment->forceFill([
+            'content' => $request->input('content'),
+            'edited_at' => now(),
+        ])->save();
+
+        return redirect()->route('posts.show', $post_id)->with('success', 'Comment updated successfully.');
+    }
+
+    public function destroy($post_id, Comment $comment)
+    {
+        if (auth()->id() !== $comment->user_id) {
+            return redirect()->route('posts.show', $post_id)->with('error', 'You are not authorized to update this comment.');
+        }
 
         $comment->delete();
 
-        return redirect()->back()->with('success', 'Comment deleted successfully.');
+        return redirect()->route('posts.show', $post_id)->with('success', 'Comment deleted successfully.');
     }
-
 }

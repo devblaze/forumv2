@@ -35,7 +35,7 @@
 
                     <!-- Post Metadata -->
                     <p class="text-gray-600 dark:text-gray-400 text-sm">
-                        Posted <span x-text="post.created_at_diff"></span> by User #<span x-text="post.author_id"></span>
+                        Posted <span x-text="post.created_at_diff"></span> by User #<span x-text="post.user_id"></span>
                     </p>
 
                     <!-- Post Excerpt -->

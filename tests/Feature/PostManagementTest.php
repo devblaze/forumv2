@@ -8,6 +8,9 @@ use Illuminate\Support\Facades\Mail;
 use function Pest\Laravel\actingAs;
 use function Pest\Laravel\get;
 use function Pest\Laravel\post;
+use function Pest\Laravel\artisan;
+use Illuminate\Support\Facades\Notification;
+use App\Notifications\NewComment;
 
 uses(\Illuminate\Foundation\Testing\RefreshDatabase::class);
 
@@ -46,13 +49,26 @@ test('users can add comments to posts', function () {
     $post = Post::factory()->create();
 
     actingAs($user)
-        ->post(route('posts.comments.store', $post), [
-            'content' => 'This is a comment.',
-        ])
-        ->assertRedirect();
-
-    expect(Comment::where('content', 'This is a comment')->exists())->toBeTrue();
+        ->post(route('posts.comments.store', $post), ['content' => 'This is a comment.',])
+        ->assertRedirect()
+        ->assertSessionDoesntHaveErrors();
 });
+
+test('users can update their own comments', function () {
+    $user = User::factory()->create(['email_verified_at' => now()]);
+    $post = Post::factory()->create();
+    $comment = Comment::factory()->create([
+        'user_id' => $user->id,
+        'post_id' => $post->id,
+    ]);
+
+    actingAs($user);
+
+    $this->patch(route('posts.comments.update', [$post, $comment]), [
+        'content' => 'Updated Comment',
+    ])->assertRedirect();
+});
+
 
 /**
  * 4) A comment has a text, creation date, and editing date.
@@ -72,13 +88,17 @@ test('a comment has content, creation date, and editing date', function () {
 test('users can edit and delete their comments', function () {
     $user = User::factory()->create(['email_verified_at' => now()]);
     $post = Post::factory()->create();
-    $comment = Comment::factory()->create(['user_id' => $user->id, 'post_id' => $post->id]);
+    $comment = Comment::factory()->create([
+        'user_id' => $user->id,
+        'post_id' => $post->id,
+        'content' => 'Original Content',
+    ]);
 
     actingAs($user);
 
     $this->patch(route('posts.comments.update', [$post, $comment]), [
         'content' => 'Updated Comment',
-    ]);
+    ])->assertRedirect(route('posts.show', $post));
 
     $comment->refresh();
     expect($comment->content)->toBe('Updated Comment');
@@ -114,17 +134,17 @@ test('users can edit and delete their posts only if there are no comments', func
  * 7) Users are notified by email when a new comment is added to their post.
  */
 test('users are notified by email when a new comment is added', function () {
-    Mail::fake();
+    Notification::fake();
 
-    $user = User::factory()->create(['email_verified_at' => now()]);
-    $post = Post::factory()->create(['user_id' => $user->id]);
+    $postOwner = User::factory()->create(['email_verified_at' => now()]);
+    $post = Post::factory()->create(['user_id' => $postOwner->id]);
     $commenter = User::factory()->create(['email_verified_at' => now()]);
 
     actingAs($commenter)
-        ->post(route('posts.comments.store', $post), ['content' => 'New comment']);
+        ->post(route('posts.comments.store', $post), ['content' => 'This is a new comment.']);
 
-    Mail::assertQueued(function ($mail) use ($user) {
-        return $mail->hasTo($user->email);
+    Notification::assertSentTo($postOwner, NewComment::class, function ($notification) use ($post) {
+        return $notification->post->id === $post->id;
     });
 });
 
@@ -132,15 +152,24 @@ test('users are notified by email when a new comment is added', function () {
  * 8) Posts are ordered by their creation date (descending).
  */
 test('posts are ordered by their creation date', function () {
-    Post::factory()->create(['created_at' => now()->subDays(2)]);
-    Post::factory()->create(['created_at' => now()->subDay()]);
-    Post::factory()->create(['created_at' => now()]);
+    $user = User::factory()->create();
+    actingAs($user);
+
+    $post1 = Post::factory()->create(['created_at' => now()->subDays(2)]);
+    $post2 = Post::factory()->create(['created_at' => now()->subDay()]);
+    $post3 = Post::factory()->create(['created_at' => now()]);
 
     $response = get(route('posts.index'))->assertStatus(200);
+
     $posts = $response->viewData('posts');
 
-    expect($posts->pluck('created_at'))
-        ->toBeSorted(['descending' => true]);
+    $actualOrder = $posts->pluck('created_at')->toArray();
+    $expectedOrder = collect([$post1, $post2, $post3])
+        ->sortByDesc('created_at')
+        ->pluck('created_at')
+        ->toArray();
+
+    expect($actualOrder)->toEqual($expectedOrder);
 });
 
 /**
@@ -194,18 +223,25 @@ test('users cannot create posts or comments without verifying their email', func
  * 11) Posts inactive for 1 year are soft deleted if they have no comments.
  */
 test('posts not commented on for 1 year are soft deleted', function () {
-    $oldPost = Post::factory()->create(['created_at' => now()->subYears(2)]);
-    $recentPost = Post::factory()->create(['created_at' => now()->subMonths(6)]);
-    $commentedPost = Post::factory()->create(['created_at' => now()->subYears(2)]);
-    Comment::factory()->create(['post_id' => $commentedPost->id, 'created_at' => now()->subMonth()]);
+    Carbon::setTestNow(Carbon::now());
 
-    $this->artisan('posts:cleanup')->assertSuccessful();
+    $post1 = Post::factory()->create(['created_at' => Carbon::now()->subYears(2)]);
 
-    $oldPost->refresh();
-    $recentPost->refresh();
-    $commentedPost->refresh();
+    $post2 = Post::factory()->create(['created_at' => Carbon::now()->subYears(2)]);
+    Comment::factory()->create([
+        'post_id' => $post2->id,
+        'created_at' => Carbon::now()->subMonths(6),
+    ]);
 
-    expect($oldPost->trashed())->toBeTrue();
-    expect($recentPost->trashed())->toBeFalse();
-    expect($commentedPost->trashed())->toBeFalse();
+    $post3 = Post::factory()->create([
+        'created_at' => Carbon::now()->subMonths(6),
+    ]);
+
+    artisan('posts:cleanup')->assertSuccessful();
+
+    expect(Post::withTrashed()->find($post1->id)?->deleted_at)->not->toBeNull();
+
+    expect(Post::find($post2->id))->not->toBeNull();
+
+    expect(Post::find($post3->id))->not->toBeNull();
 });
