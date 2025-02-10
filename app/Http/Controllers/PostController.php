@@ -7,24 +7,23 @@ use Illuminate\Http\Request;
 
 class PostController extends Controller
 {
-    public function search(Request $request): \Illuminate\Contracts\View\View
+    public function index(Request $request): \Illuminate\Contracts\View\View | \Illuminate\Http\JsonResponse
     {
-        $query = $request->input('query');
+        $perPage = 10;
 
-        $posts = Post::where('title', 'like', "%{$query}%")
-            ->orWhere('text', 'like', "%{$query}%")
-            ->orWhereHas('comments', function ($q) use ($query) {
-                $q->where('text', 'like', "%{$query}%");
-            })
-            ->latest()
-            ->paginate(10);
+        if ($request->is('api/*') || $request->wantsJson()) {
+            $page = $request->input('page', 1);
 
-        return view('posts.index', compact('posts'));
-    }
+            $posts = Post::orderBy('created_at', 'desc')
+                ->skip(($page - 1) * $perPage)
+                ->take($perPage)
+                ->get();
 
-    public function index(): \Illuminate\Contracts\View\View
-    {
-        $posts = Post::latest()->paginate(10);
+            return response()->json(['posts' => $posts]);
+        }
+
+        $posts = Post::latest()->paginate($perPage);
+
         return view('posts.index', compact('posts'));
     }
 

@@ -24,9 +24,13 @@ Route::middleware(['auth', 'verified'])->group(function () {
     Route::post('posts/{posts}/comments', [CommentController::class, 'store']);
 });
 
-Route::get('posts/search', [PostController::class, 'search'])->name('posts.search');
+Route::get('posts', [PostController::class, 'index'])->name('posts.index');
 Route::get('posts/{post}', [PostController::class, 'show'])->name('posts.show');
 
+/* --------------------------------------------------------- */
+/* ---------------------- API ROUTES ----------------------- */
+/* --------------------------------------------------------- */
+Route::get('/api/posts', [PostController::class, 'index']);
 Route::get('/api/posts/{post}/comments', [CommentController::class, 'index']);
 
 require __DIR__.'/auth.php';
